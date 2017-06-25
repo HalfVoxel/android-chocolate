@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    tools:context="com.arongranberg.chocolate.MainActivity"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_centerVertical="true"
+    android:layout_centerHorizontal="true"
+    android:background="#0e0e0e"
+    >
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="1" />
+
+    <com.github.mikephil.charting.charts.LineChart
+        android:id="@+id/chart"
+        android:layout_width="match_parent"
+        android:layout_weight="2"
+        android:layout_marginBottom="30dp"
+        android:layout_marginLeft="3dp"
+        android:layout_marginRight="3dp"
+        android:layout_height="wrap_content" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:layout_centerHorizontal="true"
+        android:layout_marginRight="20dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginBottom="5dp"
+
+        >
+
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Fan Off"
+            android:layout_marginRight="5dp"
+            android:id="@+id/fan_off"
+            android:backgroundTint="@color/heatDisabled"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Fan Auto"
+            android:layout_marginLeft="5dp"
+            android:layout_marginRight="5dp"
+            android:id="@+id/fan_auto"
+            android:backgroundTint="@color/heatAuto"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Fan On"
+            android:layout_marginLeft="5dp"
+            android:id="@+id/fan_on"
+            android:backgroundTint="@color/heatEnabled"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:layout_centerHorizontal="true"
+        android:layout_marginRight="20dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginBottom="5dp"
+
+        >
+
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Heat Off"
+            android:layout_marginRight="5dp"
+            android:id="@+id/heat_off"
+            android:backgroundTint="@color/heatDisabled"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Heat Auto"
+            android:layout_marginLeft="5dp"
+            android:layout_marginRight="5dp"
+            android:id="@+id/heat_auto"
+            android:backgroundTint="@color/heatAuto"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Heat On"
+            android:layout_marginLeft="5dp"
+            android:id="@+id/heat_on"
+            android:backgroundTint="@color/heatEnabled"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+    </LinearLayout>
+    <Button
+        android:background="@drawable/rounded_button"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginRight="20dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginBottom="10dp"
+        android:text="Fasten"
+        android:id="@+id/fasten"
+        android:layout_gravity="center_horizontal"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
+    <Button
+        android:background="@drawable/rounded_button"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginRight="20dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginBottom="10dp"
+        android:text="Unfasten"
+        android:id="@+id/unfasten"
+        android:layout_gravity="center_horizontal"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
+    <Button
+        android:background="@drawable/rounded_button"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginRight="20dp"
+        android:layout_marginLeft="20dp"
+        android:text="Start"
+        android:id="@+id/start"
+        android:layout_gravity="center_horizontal"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_weight="2"
+        android:layout_height="wrap_content" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="16dp"
+        android:textAlignment="center"
+        android:text="Cannot connect to device"
+        android:textColor="#BAA"
+        android:id="@+id/label"
+        android:layout_marginBottom="10dp"
+        />
+
+
+    <ProgressBar
+        android:layout_width="match_parent"
+        android:layout_height="20dp"
+        android:id="@+id/progressBar"
+        android:layout_marginTop="0dp"
+        android:layout_marginBottom="20dp"
+        android:indeterminateTint="#AAA"
+        android:translationZ="10dp"/>
+
+
+
+</LinearLayout>
