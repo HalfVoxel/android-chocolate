@@ -12,10 +12,13 @@
     android:background="#0e0e0e"
     >
 
-    <Space
+    <TextView
+        android:id="@+id/current_temperature"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1" />
+        android:textAlignment="center"
+        android:textSize="30sp"
+        android:text="32 °C" />
 
     <com.github.mikephil.charting.charts.LineChart
         android:id="@+id/chart"
@@ -28,13 +31,81 @@
 
     <LinearLayout
         android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_centerHorizontal="true"
+        android:layout_marginRight="20dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginBottom="5dp">
+
+        <SeekBar
+            android:id="@+id/slider"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content" />
+        <TextView
+            android:id="@+id/slider_label"
+            android:layout_width="45dp"
+            android:layout_height="wrap_content"
+            android:textAlignment="textEnd"
+            android:text="2000 g"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:layout_centerHorizontal="true"
+        android:layout_marginRight="20dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginTop="5dp"
+        android:layout_marginBottom="5dp">
+
+        <Button
+            android:id="@+id/mass_label"
+            android:backgroundTint="#263238"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:textAlignment="center"
+            android:text="Mass\n2000 g"/>
+
+        <Button
+            android:id="@+id/low_label"
+            android:backgroundTint="#263238"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:textAlignment="center"
+            android:text="Low\n27°C"/>
+        <Button
+            android:id="@+id/high_label"
+            android:backgroundTint="#263238"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:textAlignment="center"
+            android:text="High\n27°C"/>
+        <Button
+            android:id="@+id/final_label"
+            android:backgroundTint="#263238"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:textAlignment="center"
+            android:text="Final\n27°C"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="60dp"
         android:orientation="horizontal"
         android:layout_centerHorizontal="true"
         android:layout_marginRight="20dp"
         android:layout_marginLeft="20dp"
         android:layout_marginBottom="5dp"
-
+        android:visibility="gone"
         >
 
         <Button
@@ -119,30 +190,97 @@
             android:focusable="false"
             android:focusableInTouchMode="false" />
     </LinearLayout>
-    <Button
-        android:background="@drawable/rounded_button"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:layout_centerHorizontal="true"
         android:layout_marginRight="20dp"
         android:layout_marginLeft="20dp"
-        android:layout_marginBottom="10dp"
-        android:text="Fasten"
-        android:id="@+id/fasten"
-        android:layout_gravity="center_horizontal"
-        android:focusable="false"
-        android:focusableInTouchMode="false" />
-    <Button
-        android:background="@drawable/rounded_button"
+        android:layout_marginBottom="5dp"
+
+        >
+
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Auto"
+            android:layout_marginRight="5dp"
+            android:id="@+id/mode_auto"
+            android:backgroundTint="@color/heatAuto"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Heat"
+            android:layout_marginLeft="5dp"
+            android:layout_marginRight="5dp"
+            android:id="@+id/mode_heat"
+            android:backgroundTint="@color/heatEnabled"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Cool"
+            android:layout_marginLeft="5dp"
+            android:id="@+id/mode_cool"
+            android:backgroundTint="@color/heatDisabled"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:text="Keep"
+            android:layout_marginLeft="5dp"
+            android:id="@+id/mode_keep"
+            android:backgroundTint="@color/heatEnabled"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+    </LinearLayout>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:layout_centerHorizontal="true"
         android:layout_marginRight="20dp"
         android:layout_marginLeft="20dp"
-        android:layout_marginBottom="10dp"
-        android:text="Unfasten"
-        android:id="@+id/unfasten"
-        android:layout_gravity="center_horizontal"
-        android:focusable="false"
-        android:focusableInTouchMode="false" />
+        android:layout_marginBottom="5dp"
+
+        >
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="60dp"
+            android:layout_marginBottom="10dp"
+            android:text="Unfasten"
+            android:id="@+id/unfasten"
+            android:layout_gravity="center_horizontal"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+        <Button
+            android:background="@drawable/rounded_button"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="60dp"
+            android:layout_marginBottom="10dp"
+            android:text="Fasten"
+            android:id="@+id/fasten"
+            android:layout_gravity="center_horizontal"
+            android:focusable="false"
+            android:focusableInTouchMode="false" />
+    </LinearLayout>
     <Button
         android:background="@drawable/rounded_button"
         android:layout_width="match_parent"
@@ -155,9 +293,16 @@
         android:focusable="false"
         android:focusableInTouchMode="false" />
 
+    <!--<S-->
+        <!--android:id="@+id/weight_picker"-->
+        <!--android:layout_width="match_parent"-->
+        <!--android:layout_height="wrap_content"-->
+        <!--&gt;-->
+    <!--</S>-->
+
     <Space
         android:layout_width="match_parent"
-        android:layout_weight="2"
+        android:layout_weight="1"
         android:layout_height="wrap_content" />
 
     <TextView

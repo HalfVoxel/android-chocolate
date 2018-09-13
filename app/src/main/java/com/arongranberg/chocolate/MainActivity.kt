@@ -2,9 +2,9 @@ package com.arongranberg.chocolate
 
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
+import android.app.Activity
 import android.graphics.Color
 import com.arongranberg.chocolate.R.*
-import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 
@@ -17,20 +17,25 @@ import org.json.JSONObject
 import android.os.Handler
 import android.widget.*
 import com.android.volley.*
+import com.arongranberg.chocolate.R.id.current_temperature
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineDataSet
 import org.joda.time.*
-import org.joda.time.format.ISODateTimeFormat
 import java.util.*
 import kotlin.concurrent.timerTask
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.utils.ColorTemplate
+import org.apache.commons.io.IOUtils
+import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
-
-class MainActivity : AppCompatActivity() {
+class MainActivity : Activity() {
     val handler = Handler()
     var timer : Timer = Timer()
     var label: TextView? = null
@@ -43,20 +48,35 @@ class MainActivity : AppCompatActivity() {
     internal var dirtyVersion = 0
     internal var hasPerformedGetSync = Observable(false)
 
-    var started = Observable(false)
-    var heat = Observable(Heat.Auto)
-    var fan = Observable(Heat.Auto)
+    val started = Observable(false)
+    val heat = Observable(Heat.Auto)
+    val fan = Observable(Heat.Auto)
     val synced = Observable(SyncState.NotSyncing)
-    var active = Observable(false)
+    val active = Observable(false)
+    val mass = Observable(0.100f)
+    val minTemp = Observable(27f)
+    val maxTemp = Observable(48f)
+    val finalTemp = Observable(32f)
+    val sliderMode = Observable(SliderMode.Mass)
+
     val syncTemperature = Observable(SyncState.NotSyncing)
     var requestQueue : RequestQueue? = null
 
     var chart : LineChart? = null
     var temperature : ArrayList<Entry> = ArrayList()
+    var temperaturePrediction : ArrayList<Entry> = ArrayList()
+    var forcedStage = Observable(State.Auto)
 
     companion object {
         private val TAG = "Chocolate"
         internal var lastSyncTime = DateTime.now()
+    }
+
+    enum class SliderMode {
+        Mass,
+        MinT,
+        MaxT,
+        FinalT
     }
 
     enum class Heat {
@@ -64,6 +84,14 @@ class MainActivity : AppCompatActivity() {
         On,
         Auto
     }
+
+    enum class State {
+        Heat,
+        Cool,
+        Keep,
+        Auto
+    }
+
     enum class SyncState {
         NotSyncing,
         Syncing
@@ -73,51 +101,171 @@ class MainActivity : AppCompatActivity() {
         fun listen (listener : (() -> Unit))
     }
 
-    class Observable<T>(initial : T) : IObservable {
-        private var mValue = initial
-        private val listeners = ArrayList<((T, T) -> Unit)>()
-        private var mLastModifiedTime : DateTime = DateTime.now()
+    class Heater(val minT: Float, val maxT: Float, val finalT: Float) {
+        var stage = 0
+        var output = 0.0
 
-        public val lastModifiedTime : DateTime get() = mLastModifiedTime
+        fun update(temperature: Float, dt: Float): Float {
+            if (stage == 0 && temperature > maxT) stage = 1
+            if (stage == 1 && temperature < minT) stage = 2
 
-        public var value : T
-            get() = mValue
-            set(value) {
-                if (value != mValue) {
-                    mLastModifiedTime = DateTime.now()
-                    val prev = mValue
-                    mValue = value
-                    onChanged(prev, value)
-                }
+            var heatOn = when(stage) {
+                0 -> true
+                1 -> false
+                2 -> temperature < finalT
+                else -> false
             }
 
-        public override fun listen (listener : (() -> Unit)) {
-            listen { a, b -> listener() }
-        }
-
-        public fun listen (listener : ((T,T) -> Unit)) {
-            listeners.add(listener)
-        }
-
-        private fun onChanged(prev : T, current : T) {
-            for (listener in listeners) {
-                listener(prev, current)
+            if (heatOn) {
+                output = 1.0 - (1.0 - output) * Math.exp(-0.1*dt)
+            } else {
+                output *= Math.exp(-0.1 * dt)
             }
-        }
 
-        public fun init() {
-            onChanged(value, value)
+            return output.toFloat()
         }
     }
 
-    fun <T>react (listener : ((T,T) -> Unit), observable : Observable<T>) {
-        observable.listen(listener)
+    fun heatInput(heater: Heater, temperature: Float, dt: Float): Float {
+        val power = 25 // Watts
+        return heater.update(temperature, dt) * power * dt
     }
 
-    fun react(listener : (() -> Unit), vararg observables : IObservable) {
-        for(observable in observables) {
-            observable.listen(listener)
+    val roomTemperature = 25f
+
+    // The temperature (in Celcius) that corresponds to zero energy
+    // This should be the room temperature
+    val specificHeatBelow40 = 1590f // J/(kgC°)
+    val specificHeatAbove40 = 1670f // J/(kgC°)
+    val latentHeat = 45000f // J/kg
+
+    fun specificHeat (temperature: Float): Float {
+        if (temperature < 26) {
+            return specificHeatBelow40
+        } else if (temperature < 26 + 1) {
+            return specificHeatBelow40 + latentHeat/1
+        } else if (temperature < 40) {
+            return specificHeatBelow40
+        } else {
+            return specificHeatAbove40
         }
+    }
+
+    val energyToTemperatureT = FloatArray(100, { 0f })
+    val energyToTemperatureE = FloatArray(100, { 0f })
+
+    init {
+        val dT = 1f
+        var T = 0.0f
+        var E = 0.0f
+        for (i in 0 until energyToTemperatureT.size) {
+            E += specificHeat(T + 0.5f*dT)
+            T += dT
+            energyToTemperatureT[i] = T
+            energyToTemperatureE[i] = E
+        }
+    }
+
+    /** Maps a value in the range [start1, start2] to the range [end1, end2] */
+    fun mapTo(start1: Float, start2: Float, end1: Float, end2: Float, value: Float): Float {
+        return ((value - start1)/(start2 - start1)) * (end2 - end1) + end1
+    }
+
+    fun energyToTemperature(energy: Float, mass: Float): Float {
+        val energyPerMass = energy / mass
+        var mn = 0
+        var mx = energyToTemperatureT.size
+        while(mx > mn + 1) {
+            val mid = (mn + mx)/2
+            if (energyToTemperatureE[mid] > energyPerMass) {
+                mx = mid
+            } else {
+                mn = mid
+            }
+        }
+        return mapTo(energyToTemperatureE[mn]*mass, energyToTemperatureE[mx]*mass, energyToTemperatureT[mn], energyToTemperatureT[mx], energy)
+        //return roomTemperature + energy / (specificHeat * mass)
+    }
+
+    fun temperatureToEnergy(temperature: Float, mass: Float): Float {
+        var mn = 0
+        var mx = energyToTemperatureT.size
+        while(mx > mn + 1) {
+            val mid = (mn + mx)/2
+            if (energyToTemperatureT[mid] > temperature) {
+                mx = mid
+            } else {
+                mn = mid
+            }
+        }
+        return mapTo(energyToTemperatureT[mn], energyToTemperatureT[mx], energyToTemperatureE[mn]*mass, energyToTemperatureE[mx]*mass, temperature)
+        //return (temperature - roomTemperature) * (specificHeat * mass)
+    }
+
+    fun predictTempering(): ArrayList<Entry> {
+        var energy = 0f
+        val mass = this.mass.value
+
+        var time = 0f
+        val heater = Heater(minTemp.value, maxTemp.value, finalTemp.value)
+
+        // Bootstrap heater
+        val temperatureClone = temperature.clone() as ArrayList<Entry>
+        for (item in temperatureClone) {
+            heater.update(item.y, 5f)
+        }
+
+        val stage = forcedStage.value
+        if (stage != State.Auto) {
+            heater.stage = stage.ordinal
+        }
+
+        val prediction = ArrayList<Entry>()
+        if (temperatureClone.isEmpty()) {
+            energy = temperatureToEnergy(roomTemperature, mass)
+            prediction.add(Entry(0f, energyToTemperature(energy, mass)))
+        } else {
+            time = temperatureClone.last().x
+            prediction.add(temperatureClone.last())
+            energy = temperatureToEnergy(prediction.last().y, mass)
+        }
+
+        var maxTime = Float.POSITIVE_INFINITY
+        var pointAveragerX = 0f
+        var pointAveragerY = 0f
+        var pointAveragerCount = 0
+        val roughEstimatedTime = ((30 * 60) / 0.100f) * mass
+        val dt = roughEstimatedTime / 2000f // seconds
+        for (i in 0..4000) {
+            val T = energyToTemperature(energy, mass)
+            energy += heatInput(heater, T, dt)
+
+            //val heatTransferCoefficient = 100f // W/(m^2*K)
+            //val heatTransferArea = 10*0.0006f // m^2, Veeery approximate
+            //energy -= heatTransferArea * heatTransferCoefficient * (T - roomTemperature) * dt
+            // Empirical constants
+            energy -= 0.45f * (T - roomTemperature) * dt
+
+            pointAveragerX += time
+            pointAveragerY += energyToTemperature(energy, mass)
+            pointAveragerCount++
+            if (pointAveragerCount == 6) {
+                prediction.add(Entry(pointAveragerX / pointAveragerCount, pointAveragerY / pointAveragerCount))
+                pointAveragerCount = 0
+                pointAveragerX = 0f
+                pointAveragerY = 0f
+            }
+
+            time += dt
+
+            if (heater.stage == 2 && maxTime.isInfinite()) {
+                maxTime = time + 10*60f
+            }
+
+            if (time >= maxTime) break
+        }
+
+        return prediction
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -193,32 +341,12 @@ class MainActivity : AppCompatActivity() {
             progress!!.animate().alpha(targetAlpha)
         }, synced)
 
-        react({ dirty(); sync() }, started, heat, fan)
+        react({ dirty(); sync() }, started, heat, fan, minTemp, maxTemp, finalTemp, forcedStage)
 
         react({ previous, current ->
             handler.post {
                 if (current == SyncState.NotSyncing) {
-                    // Plotting library bugs if the size is 0
-                    if (temperature.size == 0) temperature.add(Entry(0f, 0f))
-
-                    val minTime = (temperature.minBy { it.x })!!.x
-                    val secondsInMinute = 60
-                    val temp = temperature.map { Entry((it.x - minTime)/secondsInMinute, it.y) }.toMutableList()
-
-                    // Sync just completed, update the graph
-                    val dataSet = LineDataSet(temp, "") // add entries to dataset
-                    dataSet.color = ColorTemplate.rgb("#edefae")
-                    dataSet.lineWidth = 1.5f
-                    dataSet.valueTextColor = 0xFFFFFF
-                    dataSet.setDrawCircles(false)
-                    dataSet.axisDependency = YAxis.AxisDependency.LEFT
-
-                    val lineData = LineData(dataSet)
-                    chart.data = lineData
-                    //val lineData = LineData(dataSet)
-                    //chart.data = lineData
-                    chart.notifyDataSetChanged()
-                    chart.invalidate()
+                    refreshGraph()
                 }
             }
         }, syncTemperature)
@@ -231,6 +359,191 @@ class MainActivity : AppCompatActivity() {
         (findViewById(id.fan_off) as Button).setOnClickListener { fan.value = Heat.Off }
         (findViewById(id.fan_on) as Button).setOnClickListener { fan.value = Heat.On }
         (findViewById(id.fan_auto) as Button).setOnClickListener { fan.value = Heat.Auto }
+
+        (findViewById(id.mode_auto) as Button).setOnClickListener { forcedStage.value = State.Auto }
+        (findViewById(id.mode_heat) as Button).setOnClickListener { forcedStage.value = State.Heat }
+        (findViewById(id.mode_cool) as Button).setOnClickListener { forcedStage.value = State.Cool }
+        (findViewById(id.mode_keep) as Button).setOnClickListener { forcedStage.value = State.Keep }
+
+        // val weight = (findViewById(id.weight_picker) as NumberPicker)
+
+//        val values = arrayOf(50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 220, 240, 260, 280, 300, 325, 350, 375, 400, 400, 450, 500, 550, 600, 650, 700, 750, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000).map { it.toString() + " g" }.reversed().toTypedArray()
+//        weight.minValue = 0
+//        weight.maxValue = values.size - 1
+//        weight.displayedValues = values
+//        weight.wrapSelectorWheel = false
+
+        val slider = (findViewById(id.slider) as SeekBar)
+        val sliderLabel = (findViewById(id.slider_label) as TextView)
+        slider.max = 1000000
+        slider.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                val fraction = progress.toFloat() / seekBar.max
+                val output = mapSlider(fraction)
+
+                when(sliderMode.value) {
+                    SliderMode.Mass -> mass.value = 0.001f * output
+                    SliderMode.MinT -> minTemp.value = output
+                    SliderMode.MaxT -> maxTemp.value = output
+                    SliderMode.FinalT -> finalTemp.value = output
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+            }
+
+        })
+
+        val lowLabel = findViewById(R.id.low_label) as Button
+        val highLabel = findViewById(R.id.high_label) as Button
+        val finalLabel = findViewById(R.id.final_label) as Button
+        val massLabel = findViewById(R.id.mass_label) as Button
+
+        lowLabel.setOnClickListener { sliderMode.value = SliderMode.MinT }
+        highLabel.setOnClickListener { sliderMode.value = SliderMode.MaxT }
+        finalLabel.setOnClickListener { sliderMode.value = SliderMode.FinalT }
+        massLabel.setOnClickListener { sliderMode.value = SliderMode.Mass }
+
+        react({
+            sliderLabel.text = when(sliderMode.value) {
+                SliderMode.Mass -> Math.round(mass.value * 1000).toString() + " g"
+                SliderMode.MinT -> Math.round(minTemp.value).toString() + " °C"
+                SliderMode.MaxT -> Math.round(maxTemp.value).toString() + " °C"
+                SliderMode.FinalT -> Math.round(finalTemp.value).toString() + " °C"
+            }
+
+            massLabel.text = Math.round(mass.value * 1000).toString() + " g"
+            lowLabel.text = Math.round(minTemp.value).toString() + " °C"
+            highLabel.text = Math.round(maxTemp.value).toString() + " °C"
+            finalLabel.text = Math.round(finalTemp.value).toString() + " °C"
+
+            tryPredictTemperatureAsync()
+        }, mass, minTemp, maxTemp, finalTemp, sliderMode, forcedStage)
+
+        react({
+            val targetValue = when(sliderMode.value) {
+                SliderMode.Mass -> mass.value * 1000
+                SliderMode.MinT -> minTemp.value
+                SliderMode.MaxT -> maxTemp.value
+                SliderMode.FinalT -> finalTemp.value
+            }
+            slider.progress = Math.round(slider.max * inverseMapSlider(targetValue))
+        }, sliderMode)
+
+        var update : Runnable? = null
+        update = Runnable {
+            tryPredictTemperatureAsync()
+            refreshGraph()
+            handler.postDelayed(update, 1000)
+        }
+
+        react({
+            (findViewById(current_temperature) as TextView).text = String.format("%.1f °C", temperature.lastOrNull()?.y ?: 0)
+        }, syncTemperature)
+
+        mass.init()
+        sliderMode.init()
+
+        update.run()
+        //handler.postDelayed(update, 1000)
+    }
+
+    var predictingTemperature = false
+    val threadPool: ExecutorService = Executors.newCachedThreadPool()
+
+    fun tryPredictTemperatureAsync() {
+        if (!predictingTemperature) {
+            predictingTemperature = true
+            threadPool.execute {
+                temperaturePrediction = predictTempering()
+                predictingTemperature = false
+                handler.post({ refreshGraph() })
+            }
+        }
+    }
+    fun sliderMin(): Float {
+        return when (sliderMode.value) {
+            SliderMode.Mass -> 50f
+            SliderMode.MaxT -> 40f
+            else -> roomTemperature + 0.1f
+        }
+    }
+
+    fun sliderMax(): Float {
+        return when (sliderMode.value) {
+            SliderMode.Mass -> 2000f
+            SliderMode.MaxT -> 60f
+            else -> 40f
+        }
+    }
+
+    fun inverseMapSlider(output: Float): Float {
+        var mn = 0.0f
+        var mx = 1.0f
+        for (i in 0..20) {
+            val mid = (mn + mx)/2f
+            var v = mapSlider(mid)
+            if (v < output) {
+                mn = mid
+            } else if (v > output) {
+                mx = mid
+            } else {
+                break
+            }
+        }
+        mn = (mn + mx) * 0.5f
+        System.out.println("In " + output + " out: " + mapSlider(mn))
+        return mn
+    }
+
+    fun mapSlider(fraction: Float): Float {
+        var outputMn = sliderMin().toDouble()
+        var outputMx = sliderMax().toDouble()
+        val mapping = Math.pow(outputMx/outputMn, fraction.toDouble()) * outputMn
+        val rounding = Math.max(0, Math.log10(mapping).toInt() - 1)
+        val power10 = Math.pow(10.0, rounding.toDouble())
+        return (Math.round(mapping / power10) * power10).toFloat()
+    }
+
+    fun refreshGraph() {
+        // Plotting library bugs if the size is 0
+        if (temperature.size == 0) temperature.add(Entry(0f, 0f))
+
+        val minTime = (temperature.minBy { it.x })!!.x
+        val secondsInMinute = 60
+        val temp = temperature.map { Entry((it.x - minTime)/secondsInMinute, it.y) }.toMutableList()
+
+        // Sync just completed, update the graph
+        val dataSet = LineDataSet(temp, "") // add entries to dataset
+        dataSet.color = ColorTemplate.rgb("#edefae")
+        dataSet.lineWidth = 1.5f
+        dataSet.valueTextColor = 0xFFFFFF
+        dataSet.setDrawCircles(false)
+        dataSet.axisDependency = YAxis.AxisDependency.RIGHT
+
+        val temperaturePrediction = this.temperaturePrediction
+        if (temperaturePrediction.size == 0) temperaturePrediction.add(Entry(0f, 0f))
+        val temperaturePrediction2 = temperaturePrediction.map { Entry((it.x - minTime)/secondsInMinute, it.y) }.toMutableList()
+        val dataSet2 = LineDataSet(temperaturePrediction2, "")
+        dataSet2.color = ColorTemplate.rgb("#aeb7ef")
+        dataSet2.lineWidth = 1.5f
+        dataSet2.valueTextColor = 0xFFFFFF
+        dataSet2.setDrawCircles(false)
+        dataSet2.axisDependency = YAxis.AxisDependency.RIGHT
+
+        var maximum = Math.max(temp.maxBy { it.y }!!.y, temperaturePrediction2.maxBy { it.y }!!.y)
+        maximum = (Math.ceil(maximum / 10.0)*10).toFloat()
+
+        val lineData = LineData(dataSet, dataSet2)
+        chart!!.data = lineData
+        chart!!.axisRight.axisMaximum = maximum
+        //val lineData = LineData(dataSet)
+        //chart.data = lineData
+        chart!!.notifyDataSetChanged()
+        chart!!.invalidate()
     }
 
     fun fasten () {
@@ -284,10 +597,16 @@ class MainActivity : AppCompatActivity() {
     internal fun refresh() {
         refreshLabel()
 
-        if (active.value && syncTemperature.value == SyncState.NotSyncing && Duration(syncTemperature.lastModifiedTime, DateTime.now()).millis > 1000) syncTemperature()
+        if (active.value && syncTemperature.value == SyncState.NotSyncing && Duration(syncTemperature.lastModifiedTime, DateTime.now()).millis > 2000) syncTemperature()
 
         if ((lastSyncedVersion < dirtyVersion || !hasPerformedGetSync.value) && synced.value != SyncState.Syncing && Duration(dirtyingTime, DateTime.now()).millis > 800) {
             sync()
+        }
+
+        // Dirty every 30 seconds to make sure the state of the machine is up to date.
+        // The temperature buffer will overflow after around 20 minutes
+        if (Duration(dirtyingTime, DateTime.now()).millis > 30000) {
+            dirty()
         }
     }
 
@@ -311,6 +630,30 @@ class MainActivity : AppCompatActivity() {
     val secret = 235174146;
 
     internal fun sendCommand(command : String) {
+        Thread({
+            var socket : Socket? = null
+            try {
+                Log.v(TAG, "Connecting...")
+                socket = Socket("home.arongranberg.com", 6001)
+                socket.soTimeout = 6000
+                socket.getOutputStream().write(command.toByteArray())
+                val result = IOUtils.toString(socket.getInputStream())
+                if (result == "OK") {
+                    Log.v(TAG, "Received message ACK")
+                } else {
+                    Log.e(TAG, "Expected 'OK' response, received: '$result'")
+                    lastSyncFailed.value = true
+                }
+            } catch (e : Exception) {
+                lastSyncFailed.value = true
+                Log.e(TAG, "Failed to send command", e)
+            } finally {
+                socket?.close()
+            }
+        }).start()
+    }
+
+    internal fun sendCommandOld(command : String) {
         val url = "http://home.arongranberg.com:6001/command/" + command
 
         val jsonRequest = JSONObject()
@@ -337,7 +680,64 @@ class MainActivity : AppCompatActivity() {
         requestQueue!!.add(request)
     }
 
+    fun decompressTemperature(t: Byte): Float {
+        val maxT = 80f;
+        val minT = 20f;
+        return t * ((maxT - minT) / 255.0f) + minT
+    }
+
+    var lastReceivedTemperatureIndex = 0
     internal fun syncTemperature() {
+        syncTemperature.value = SyncState.Syncing
+        Thread({
+            var socket : Socket? = null
+            try {
+                Log.v(TAG, "Checking temperatures...")
+                socket = Socket("home.arongranberg.com", 6001)
+                socket.soTimeout = 6000
+                val command = "GET TEMPERATURES"
+                socket.getOutputStream().write(command.toByteArray())
+                val result = ByteBuffer.wrap(IOUtils.toByteArray(socket.getInputStream()))
+                result.order(ByteOrder.LITTLE_ENDIAN)
+                if (result.capacity() < 4) {
+                    throw Exception("Not enough data received when syncing temperature")
+                }
+
+                // Deserialize on main thread
+                handler.post({
+                    val startIndex = result.getInt(0)
+                    val temperatureValuesToRead = result.capacity()-4
+
+                    if (lastReceivedTemperatureIndex > startIndex + temperatureValuesToRead - 1) {
+                        // Machine rebooted?
+                        // Keep all values
+                    } else {
+                        val removeAllAfterIndex = temperature.size - 1 - (lastReceivedTemperatureIndex - startIndex)
+                        // Wow, so inefficient, but Kotlin is weird
+                        temperature.removeAll(temperature.filterIndexed { i, entry -> i >= removeAllAfterIndex })
+                    }
+                    val startTime = if(temperature.isNotEmpty()) temperature.last().x else 0f
+                    for (i in 0 until temperatureValuesToRead) {
+                        val compressedTemperature = result.get(i+4)
+                        val temp = decompressTemperature(compressedTemperature)
+                        Log.v(TAG, "Temp: " + temp)
+                        temperature.add(Entry(startTime + i.toFloat() * 5, temp))
+                    }
+                    Log.v(TAG, "Received ${temperature.size} entries with index " + startIndex)
+                    lastReceivedTemperatureIndex = startIndex + temperatureValuesToRead - 1
+                })
+                lastSyncFailed.value = false
+            } catch (e : Exception) {
+                lastSyncFailed.value = true
+                Log.e(TAG, "Failed to check temperatures", e)
+            } finally {
+                syncTemperature.value = SyncState.NotSyncing
+                socket?.close()
+            }
+        }).start()
+    }
+
+    internal fun syncTemperatureOld() {
         val url = "http://home.arongranberg.com:6001/temperature"
 
         val jsonRequest = JSONObject()
@@ -376,7 +776,58 @@ class MainActivity : AppCompatActivity() {
         requestQueue!!.add(request)
     }
 
+    fun calculateTemperingState (): Int {
+        if (heat.value == Heat.On) {
+            return 3
+        }
+
+        if (!started.value || heat.value == Heat.Off) {
+            return -1
+        }
+
+        if (forcedStage.value != State.Auto) {
+            return forcedStage.value.ordinal
+        }
+
+        val heater = Heater(minTemp.value, maxTemp.value, finalTemp.value)
+        for (entry in temperature) {
+            heater.update(entry.y, 5f)
+        }
+        return heater.stage
+    }
+
     internal fun sync(upload : Boolean) {
+        synced.value = SyncState.Syncing
+        val buffer = ByteBuffer.allocate(18).order(ByteOrder.LITTLE_ENDIAN)
+        val temperingState = calculateTemperingState()
+        buffer.put('S'.toByte()).put('='.toByte()).putFloat(minTemp.value).putFloat(maxTemp.value).putFloat(finalTemp.value).putInt(temperingState)
+        val version = dirtyVersion
+        hasPerformedGetSync.value = true
+        Thread({
+            var socket : Socket? = null
+            try {
+                Log.v(TAG, "Connecting...")
+                socket = Socket("home.arongranberg.com", 6001)
+                socket.soTimeout = 6000
+                socket.getOutputStream().write(buffer.array())
+                Log.v(TAG, "Reading...")
+                // val output = BufferedReader(InputStreamReader(socket.getInputStream())).lines().collect(Collectors.joining('\n'))
+                val output = IOUtils.toString(socket.getInputStream())
+                Log.v(TAG, "Response: " + output)
+                Log.v(TAG, "Done")
+                lastSyncedVersion = version
+                lastSyncFailed.value = false
+            } catch (e : Exception) {
+                lastSyncFailed.value = true
+                Log.e(TAG, "Failed to sync", e)
+            } finally {
+                socket?.close()
+                synced.value = SyncState.NotSyncing
+            }
+        }).start()
+    }
+
+    internal fun syncOld(upload : Boolean) {
         val url = "http://home.arongranberg.com:6001/" + (if (upload) "store" else "get")
 
         val jsonRequest = JSONObject()
@@ -386,6 +837,9 @@ class MainActivity : AppCompatActivity() {
                 jsonRequest.put("tempering", started.value)
                 jsonRequest.put("heat", heat.value.toString())
                 jsonRequest.put("fan", fan.value.toString())
+                jsonRequest.put("lowTemp", minTemp.value.toDouble())
+                jsonRequest.put("highTemp", maxTemp.value.toDouble())
+                jsonRequest.put("finalTemp", finalTemp.value.toDouble())
             }
             jsonRequest.put("secret", secret)
         } catch (e: JSONException) {
@@ -411,6 +865,9 @@ class MainActivity : AppCompatActivity() {
                             started.value = response.getBoolean("tempering")
                             heat.value = Heat.valueOf(response.getString("heat"))
                             fan.value = Heat.valueOf(response.getString("fan"))
+                            minTemp.value = response.getDouble("lowTemp").toFloat()
+                            maxTemp.value = response.getDouble("highTemp").toFloat()
+                            finalTemp.value = response.getDouble("finalTemp").toFloat()
                             Log.v(TAG, "Response: " + response.getBoolean("tempering"))
 
                             lastSyncedVersion = dirtyVersion
