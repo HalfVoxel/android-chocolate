@@ -2,8 +2,6 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 24
-    buildToolsVersion '25.0.0'
 
     defaultConfig {
         applicationId "com.arongranberg.chocolate"
@@ -21,16 +19,19 @@ android {
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
+    buildToolsVersion '27.0.3'
+    compileSdkVersion 27
 }
 
 dependencies {
     compile fileTree(include: ['*.jar'], dir: 'libs')
     testCompile 'junit:junit:4.12'
-    compile 'com.android.support:appcompat-v7:24.1.1'
+    compile 'com.android.support:appcompat-v7:27.1.1'
     compile 'com.android.volley:volley:1.0.0'
     compile 'joda-time:joda-time:2.9.4'
-    compile 'com.android.support:recyclerview-v7:24.1.1'
-    compile 'com.android.support:support-v4:24.1.1'
+    compile 'com.akexorcist:bluetoothspp:1.0.0'
+    compile 'com.android.support:recyclerview-v7:27.1.1'
+    compile 'com.android.support:support-v4:27.1.1'
     compile 'com.daimajia.swipelayout:library:1.2.0@aar'
     compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     compile 'com.github.PhilJay:MPAndroidChart:v3.0.2'
