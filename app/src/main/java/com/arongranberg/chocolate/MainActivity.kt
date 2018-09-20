@@ -274,19 +274,19 @@ class MainActivity : Activity() {
 
         requestQueue = Volley.newRequestQueue(this)
 
-        label = findViewById(id.label) as TextView;
-        progress = findViewById(id.progressBar) as ProgressBar;
+        label = findViewById<TextView>(id.label);
+        progress = findViewById<ProgressBar>(id.progressBar);
 
-        startButton = findViewById(id.start) as Button
+        startButton = findViewById<Button>(id.start)
         startButton!!.setOnClickListener({ started.value = !started.value })
 
-        val fastenButton = findViewById(id.fasten) as Button
+        val fastenButton = findViewById<Button>(id.fasten)
         fastenButton.setOnClickListener({ fasten() })
 
-        val unfastenButton = findViewById(id.unfasten) as Button
+        val unfastenButton = findViewById<Button>(id.unfasten)
         unfastenButton.setOnClickListener({ unfasten() })
 
-        val chart = findViewById(R.id.chart) as LineChart
+        val chart = findViewById<LineChart>(R.id.chart)
         this.chart = chart
 
         chart.setDrawBorders(false)
@@ -352,20 +352,20 @@ class MainActivity : Activity() {
         }, syncTemperature)
         Log.v(TAG, "CREATE")
 
-        (findViewById(id.heat_off) as Button).setOnClickListener { heat.value = Heat.Off }
-        (findViewById(id.heat_on) as Button).setOnClickListener { heat.value = Heat.On }
-        (findViewById(id.heat_auto) as Button).setOnClickListener { heat.value = Heat.Auto }
+        (findViewById<Button>(id.heat_off)).setOnClickListener { heat.value = Heat.Off }
+        (findViewById<Button>(id.heat_on)).setOnClickListener { heat.value = Heat.On }
+        (findViewById<Button>(id.heat_auto)).setOnClickListener { heat.value = Heat.Auto }
 
-        (findViewById(id.fan_off) as Button).setOnClickListener { fan.value = Heat.Off }
-        (findViewById(id.fan_on) as Button).setOnClickListener { fan.value = Heat.On }
-        (findViewById(id.fan_auto) as Button).setOnClickListener { fan.value = Heat.Auto }
+        (findViewById<Button>(id.fan_off)).setOnClickListener { fan.value = Heat.Off }
+        (findViewById<Button>(id.fan_on)).setOnClickListener { fan.value = Heat.On }
+        (findViewById<Button>(id.fan_auto)).setOnClickListener { fan.value = Heat.Auto }
 
-        (findViewById(id.mode_auto) as Button).setOnClickListener { forcedStage.value = State.Auto }
-        (findViewById(id.mode_heat) as Button).setOnClickListener { forcedStage.value = State.Heat }
-        (findViewById(id.mode_cool) as Button).setOnClickListener { forcedStage.value = State.Cool }
-        (findViewById(id.mode_keep) as Button).setOnClickListener { forcedStage.value = State.Keep }
+        (findViewById<Button>(id.mode_auto)).setOnClickListener { forcedStage.value = State.Auto }
+        (findViewById<Button>(id.mode_heat)).setOnClickListener { forcedStage.value = State.Heat }
+        (findViewById<Button>(id.mode_cool)).setOnClickListener { forcedStage.value = State.Cool }
+        (findViewById<Button>(id.mode_keep)).setOnClickListener { forcedStage.value = State.Keep }
 
-        // val weight = (findViewById(id.weight_picker) as NumberPicker)
+        // val weight = (findViewById<NumberPicker>(id.weight_picker))
 
 //        val values = arrayOf(50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 220, 240, 260, 280, 300, 325, 350, 375, 400, 400, 450, 500, 550, 600, 650, 700, 750, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000).map { it.toString() + " g" }.reversed().toTypedArray()
 //        weight.minValue = 0
@@ -373,8 +373,8 @@ class MainActivity : Activity() {
 //        weight.displayedValues = values
 //        weight.wrapSelectorWheel = false
 
-        val slider = (findViewById(id.slider) as SeekBar)
-        val sliderLabel = (findViewById(id.slider_label) as TextView)
+        val slider = (findViewById<SeekBar>(id.slider))
+        val sliderLabel = (findViewById<TextView>(id.slider_label))
         slider.max = 1000000
         slider.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -397,10 +397,10 @@ class MainActivity : Activity() {
 
         })
 
-        val lowLabel = findViewById(R.id.low_label) as Button
-        val highLabel = findViewById(R.id.high_label) as Button
-        val finalLabel = findViewById(R.id.final_label) as Button
-        val massLabel = findViewById(R.id.mass_label) as Button
+        val lowLabel = findViewById<Button>(R.id.low_label)
+        val highLabel = findViewById<Button>(R.id.high_label)
+        val finalLabel = findViewById<Button>(R.id.final_label)
+        val massLabel = findViewById<Button>(R.id.mass_label)
 
         lowLabel.setOnClickListener { sliderMode.value = SliderMode.MinT }
         highLabel.setOnClickListener { sliderMode.value = SliderMode.MaxT }
@@ -441,7 +441,7 @@ class MainActivity : Activity() {
         }
 
         react({
-            (findViewById(current_temperature) as TextView).text = String.format("%.1f °C", temperature.lastOrNull()?.y ?: 0)
+            (findViewById<TextView>(current_temperature)).text = String.format("%.1f °C", temperature.lastOrNull()?.y ?: 0)
         }, syncTemperature)
 
         mass.init()
@@ -500,8 +500,8 @@ class MainActivity : Activity() {
     }
 
     fun mapSlider(fraction: Float): Float {
-        var outputMn = sliderMin().toDouble()
-        var outputMx = sliderMax().toDouble()
+        val outputMn = sliderMin().toDouble()
+        val outputMx = sliderMax().toDouble()
         val mapping = Math.pow(outputMx/outputMn, fraction.toDouble()) * outputMn
         val rounding = Math.max(0, Math.log10(mapping).toInt() - 1)
         val power10 = Math.pow(10.0, rounding.toDouble())
@@ -630,7 +630,7 @@ class MainActivity : Activity() {
     val secret = 235174146;
 
     internal fun sendCommand(command : String) {
-        Thread({
+        Thread {
             var socket : Socket? = null
             try {
                 Log.v(TAG, "Connecting...")
@@ -650,34 +650,7 @@ class MainActivity : Activity() {
             } finally {
                 socket?.close()
             }
-        }).start()
-    }
-
-    internal fun sendCommandOld(command : String) {
-        val url = "http://home.arongranberg.com:6001/command/" + command
-
-        val jsonRequest = JSONObject()
-
-        try {
-            jsonRequest.put("secret", secret)
-        } catch (e: JSONException) {
-            Log.e(TAG, "Failed to serialize")
-            return
-        }
-
-        // Request a string response from the provided URL.
-        val request = JsonObjectRequest(Request.Method.POST, url, jsonRequest,
-                Response.Listener<org.json.JSONObject> {
-                    response -> handler.post({ refresh() })
-                },
-                Response.ErrorListener {
-                    error ->
-                    Log.v(TAG, "Error " + error.message)
-                    lastSyncFailed.value = true
-                })
-
-        // Add the request to the RequestQueue.
-        requestQueue!!.add(request)
+        }.start()
     }
 
     fun decompressTemperature(t: Byte): Float {
@@ -689,7 +662,7 @@ class MainActivity : Activity() {
     var lastReceivedTemperatureIndex = 0
     internal fun syncTemperature() {
         syncTemperature.value = SyncState.Syncing
-        Thread({
+        Thread {
             var socket : Socket? = null
             try {
                 Log.v(TAG, "Checking temperatures...")
@@ -734,46 +707,7 @@ class MainActivity : Activity() {
                 syncTemperature.value = SyncState.NotSyncing
                 socket?.close()
             }
-        }).start()
-    }
-
-    internal fun syncTemperatureOld() {
-        val url = "http://home.arongranberg.com:6001/temperature"
-
-        val jsonRequest = JSONObject()
-
-        try {
-            jsonRequest.put("secret", secret)
-        } catch (e: JSONException) {
-            Log.e(TAG, "Failed to serialize")
-            return
-        }
-
-        syncTemperature.value = SyncState.Syncing
-        // Request a string response from the provided URL.
-        val request = JsonObjectRequest(Request.Method.POST, url, jsonRequest,
-                Response.Listener<org.json.JSONObject> {
-                    response ->
-                    syncTemperature.value = SyncState.NotSyncing
-                    val arr = response.getJSONArray("temperature")
-                    val temp = ArrayList<Entry>()
-                    for (i in 0..arr.length()-1) {
-                        val item = arr.getJSONArray(i)
-                        temp.add(Entry(item.getDouble(0).toFloat(), item.getDouble(1).toFloat()))
-                    }
-
-                    temperature = temp
-                    handler.post({ refresh() })
-                },
-                Response.ErrorListener {
-                    error ->
-                    syncTemperature.value = SyncState.NotSyncing
-                    Log.v(TAG, "Error " + error.message)
-                    lastSyncFailed.value = true
-                })
-
-        // Add the request to the RequestQueue.
-        requestQueue!!.add(request)
+        }.start()
     }
 
     fun calculateTemperingState (): Int {
@@ -803,7 +737,7 @@ class MainActivity : Activity() {
         buffer.put('S'.toByte()).put('='.toByte()).putFloat(minTemp.value).putFloat(maxTemp.value).putFloat(finalTemp.value).putInt(temperingState)
         val version = dirtyVersion
         hasPerformedGetSync.value = true
-        Thread({
+        Thread {
             var socket : Socket? = null
             try {
                 Log.v(TAG, "Connecting...")
@@ -824,68 +758,6 @@ class MainActivity : Activity() {
                 socket?.close()
                 synced.value = SyncState.NotSyncing
             }
-        }).start()
-    }
-
-    internal fun syncOld(upload : Boolean) {
-        val url = "http://home.arongranberg.com:6001/" + (if (upload) "store" else "get")
-
-        val jsonRequest = JSONObject()
-
-        try {
-            if (upload) {
-                jsonRequest.put("tempering", started.value)
-                jsonRequest.put("heat", heat.value.toString())
-                jsonRequest.put("fan", fan.value.toString())
-                jsonRequest.put("lowTemp", minTemp.value.toDouble())
-                jsonRequest.put("highTemp", maxTemp.value.toDouble())
-                jsonRequest.put("finalTemp", finalTemp.value.toDouble())
-            }
-            jsonRequest.put("secret", secret)
-        } catch (e: JSONException) {
-            Log.e(TAG, "Failed to serialize")
-            return
-        }
-
-        // Will be reset if the sync fails
-        synced.value = SyncState.Syncing
-        val version = dirtyVersion
-        Log.v(TAG, "Starting " + version + " " + url)
-        // Request a string response from the provided URL.
-        val request = JsonObjectRequest(Request.Method.POST, url, jsonRequest,
-                Response.Listener<org.json.JSONObject> {
-                    response ->
-                        Log.v(TAG, "Response")
-                        if (upload) {
-                            lastSyncedVersion = version
-                        } else {
-                            hasPerformedGetSync.value = true
-                            // User has not changed UI since sync was started. Ok to apply settings
-                            Log.v(TAG,response.toString())
-                            started.value = response.getBoolean("tempering")
-                            heat.value = Heat.valueOf(response.getString("heat"))
-                            fan.value = Heat.valueOf(response.getString("fan"))
-                            minTemp.value = response.getDouble("lowTemp").toFloat()
-                            maxTemp.value = response.getDouble("highTemp").toFloat()
-                            finalTemp.value = response.getDouble("finalTemp").toFloat()
-                            Log.v(TAG, "Response: " + response.getBoolean("tempering"))
-
-                            lastSyncedVersion = dirtyVersion
-                            Log.v(TAG, "Response Complete at " + lastSyncedVersion)
-                        }
-
-                        synced.value= SyncState.NotSyncing
-                        lastSyncFailed.value = false
-                        handler.post({ refresh() })
-                },
-                Response.ErrorListener {
-                    error ->
-                        Log.v(TAG, "Error " + error.message)
-                        synced.value = SyncState.NotSyncing
-                        lastSyncFailed.value = true
-                })
-
-        // Add the request to the RequestQueue.
-        requestQueue!!.add(request)
+        }.start()
     }
 }
