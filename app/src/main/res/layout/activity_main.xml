@@ -264,19 +264,8 @@
             android:layout_weight="1"
             android:layout_height="60dp"
             android:layout_marginBottom="10dp"
-            android:text="Unfasten"
-            android:id="@+id/unfasten"
-            android:layout_gravity="center_horizontal"
-            android:focusable="false"
-            android:focusableInTouchMode="false" />
-        <Button
-            android:background="@drawable/rounded_button"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="60dp"
-            android:layout_marginBottom="10dp"
-            android:text="Fasten"
-            android:id="@+id/fasten"
+            android:text="Connect"
+            android:id="@+id/connect"
             android:layout_gravity="center_horizontal"
             android:focusable="false"
             android:focusableInTouchMode="false" />

@@ -3,37 +3,34 @@ package com.arongranberg.chocolate
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
-import com.arongranberg.chocolate.R.*
 import android.os.Bundle
-import android.util.Log
-
-import com.android.volley.toolbox.JsonObjectRequest
-import com.android.volley.toolbox.Volley
-
-import org.json.JSONException
-import org.json.JSONObject
-
 import android.os.Handler
+import android.util.Log
 import android.widget.*
-import com.android.volley.*
+import app.akexorcist.bluetotohspp.library.BluetoothSPP
+import app.akexorcist.bluetotohspp.library.BluetoothState
+import app.akexorcist.bluetotohspp.library.DeviceList
+import com.arongranberg.chocolate.R.*
 import com.arongranberg.chocolate.R.id.current_temperature
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.data.LineDataSet
-import org.joda.time.*
-import java.util.*
-import kotlin.concurrent.timerTask
 import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.utils.ColorTemplate
-import org.apache.commons.io.IOUtils
-import java.net.Socket
+import org.joda.time.DateTime
+import org.joda.time.Duration
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.concurrent.timerTask
 
 class MainActivity : Activity() {
     val handler = Handler()
@@ -41,6 +38,8 @@ class MainActivity : Activity() {
     var label: TextView? = null
     var startButton: Button? = null
     var progress: ProgressBar? = null
+
+    val bluetooth = BluetoothSPP(this);
 
     var dirtyingTime : DateTime = DateTime.now()
     internal var lastSyncFailed = Observable(false)
@@ -60,7 +59,6 @@ class MainActivity : Activity() {
     val sliderMode = Observable(SliderMode.Mass)
 
     val syncTemperature = Observable(SyncState.NotSyncing)
-    var requestQueue : RequestQueue? = null
 
     var chart : LineChart? = null
     var temperature : ArrayList<Entry> = ArrayList()
@@ -272,19 +270,17 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(layout.activity_main)
 
-        requestQueue = Volley.newRequestQueue(this)
-
         label = findViewById<TextView>(id.label);
         progress = findViewById<ProgressBar>(id.progressBar);
 
         startButton = findViewById<Button>(id.start)
         startButton!!.setOnClickListener({ started.value = !started.value })
 
-        val fastenButton = findViewById<Button>(id.fasten)
-        fastenButton.setOnClickListener({ fasten() })
-
-        val unfastenButton = findViewById<Button>(id.unfasten)
-        unfastenButton.setOnClickListener({ unfasten() })
+//        val fastenButton = findViewById<Button>(id.fasten)
+//        fastenButton.setOnClickListener({ fasten() })
+//
+//        val unfastenButton = findViewById<Button>(id.unfasten)
+//        unfastenButton.setOnClickListener({ unfasten() })
 
         val chart = findViewById<LineChart>(R.id.chart)
         this.chart = chart
@@ -447,8 +443,111 @@ class MainActivity : Activity() {
         mass.init()
         sliderMode.init()
 
+        if (!bluetooth.isBluetoothAvailable) {
+            Toast.makeText(applicationContext, "Bluetooth is not available", Toast.LENGTH_SHORT).show();
+            finish();
+        }
+
+        val connect = findViewById<Button>(id.connect)
+
+        bluetooth.setBluetoothConnectionListener(object : BluetoothSPP.BluetoothConnectionListener {
+            override fun onDeviceConnected(name: String, address: String) {
+                connect.setText("Connected to $name")
+            }
+
+            override fun onDeviceDisconnected() {
+                connect.setText("Connection lost")
+            }
+
+            override fun onDeviceConnectionFailed() {
+                connect.setText("Unable to connect")
+            }
+        })
+
+        bluetooth.setOnDataReceivedListener { data: ByteArray, message: String ->
+            Log.v("Bluetooth", message)
+            processMessage(message)
+        }
+
+        connect.setOnClickListener {
+            if (this.bluetooth.serviceState == BluetoothState.STATE_CONNECTED) {
+                this.bluetooth.disconnect()
+            } else {
+                val intent = Intent(applicationContext, DeviceList::class.java)
+                startActivityForResult(intent, BluetoothState.REQUEST_CONNECT_DEVICE)
+            }
+        }
+
         update.run()
         //handler.postDelayed(update, 1000)
+    }
+
+    fun processMessage(message: String) {
+        var str = message
+        if (str.startsWith("T:")) {
+            handler.post {
+                str = str.substring(2)
+                val splits = str.split(" ")
+                val integers = splits.map { s -> s.toInt() }
+                val temperatureValuesToRead = integers[0]
+                val startIndex = integers[1]
+                if (temperatureValuesToRead + 2 != integers.size) {
+                    Log.v(TAG, "Expected to read $temperatureValuesToRead integers, but found ${integers.size - 2}");
+                    return@post
+                }
+
+                if (lastReceivedTemperatureIndex > startIndex + temperatureValuesToRead - 1) {
+                    // Machine rebooted?
+                    // Keep all values
+                } else {
+                    val removeAllAfterIndex = temperature.size - 1 - (lastReceivedTemperatureIndex - startIndex)
+                    // Wow, so inefficient, but Kotlin is weird
+                    temperature.removeAll(temperature.filterIndexed { i, entry -> i >= removeAllAfterIndex })
+                }
+                val startTime = if (temperature.isNotEmpty()) temperature.last().x else 0f
+                for (i in 0 until temperatureValuesToRead) {
+                    val compressedTemperature = integers[i+2].toByte()
+                    val temp = decompressTemperature(compressedTemperature)
+                    temperature.add(Entry(startTime + i.toFloat() * 5, temp))
+                }
+                Log.v(TAG, "Received ${temperature.size} entries with index " + startIndex)
+                lastReceivedTemperatureIndex = startIndex + temperatureValuesToRead - 1
+                syncTemperature.value = SyncState.NotSyncing
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!bluetooth.isBluetoothEnabled) {
+            bluetooth.enable()
+        } else {
+            if (!bluetooth.isServiceAvailable) {
+                bluetooth.setupService()
+                bluetooth.startService(BluetoothState.DEVICE_OTHER);
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        bluetooth.stopService();
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
+        if (requestCode == BluetoothState.REQUEST_CONNECT_DEVICE) {
+            if (resultCode == Activity.RESULT_OK)
+                bluetooth.connect(data)
+        } else if (requestCode == BluetoothState.REQUEST_ENABLE_BT) {
+            if (resultCode == Activity.RESULT_OK) {
+                bluetooth.setupService()
+            } else {
+                Toast.makeText(getApplicationContext()
+                        , "Bluetooth was not enabled."
+                        , Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
     }
 
     var predictingTemperature = false
@@ -597,7 +696,7 @@ class MainActivity : Activity() {
     internal fun refresh() {
         refreshLabel()
 
-        if (active.value && syncTemperature.value == SyncState.NotSyncing && Duration(syncTemperature.lastModifiedTime, DateTime.now()).millis > 2000) syncTemperature()
+        if (active.value && Duration(syncTemperature.lastModifiedTime, DateTime.now()).millis > 2000) syncTemperature()
 
         if ((lastSyncedVersion < dirtyVersion || !hasPerformedGetSync.value) && synced.value != SyncState.Syncing && Duration(dirtyingTime, DateTime.now()).millis > 800) {
             sync()
@@ -606,6 +705,7 @@ class MainActivity : Activity() {
         // Dirty every 30 seconds to make sure the state of the machine is up to date.
         // The temperature buffer will overflow after around 20 minutes
         if (Duration(dirtyingTime, DateTime.now()).millis > 30000) {
+            syncTemperature.value = SyncState.NotSyncing
             dirty()
         }
     }
@@ -627,10 +727,15 @@ class MainActivity : Activity() {
         }
     }
 
-    val secret = 235174146;
-
     internal fun sendCommand(command : String) {
-        Thread {
+        Log.v(TAG, "Sending command: " + command)
+        if (bluetooth.isBluetoothAvailable) {
+            bluetooth.send("PACKET:" + command.length + ":" + command, false)
+        } else {
+            Log.v(TAG, "Bluetooth not available")
+        }
+
+        /*Thread {
             var socket : Socket? = null
             try {
                 Log.v(TAG, "Connecting...")
@@ -650,7 +755,7 @@ class MainActivity : Activity() {
             } finally {
                 socket?.close()
             }
-        }.start()
+        }.start()*/
     }
 
     fun decompressTemperature(t: Byte): Float {
@@ -662,6 +767,9 @@ class MainActivity : Activity() {
     var lastReceivedTemperatureIndex = 0
     internal fun syncTemperature() {
         syncTemperature.value = SyncState.Syncing
+        sendCommand("GET TEMPERATURES")
+
+        /*syncTemperature.value = SyncState.Syncing
         Thread {
             var socket : Socket? = null
             try {
@@ -707,15 +815,11 @@ class MainActivity : Activity() {
                 syncTemperature.value = SyncState.NotSyncing
                 socket?.close()
             }
-        }.start()
+        }.start()*/
     }
 
     fun calculateTemperingState (): Int {
-        if (heat.value == Heat.On) {
-            return 3
-        }
-
-        if (!started.value || heat.value == Heat.Off) {
+        if (!started.value) {
             return -1
         }
 
@@ -732,32 +836,48 @@ class MainActivity : Activity() {
 
     internal fun sync(upload : Boolean) {
         synced.value = SyncState.Syncing
-        val buffer = ByteBuffer.allocate(18).order(ByteOrder.LITTLE_ENDIAN)
+        val buffer = ByteBuffer.allocate(28).order(ByteOrder.LITTLE_ENDIAN)
         val temperingState = calculateTemperingState()
-        buffer.put('S'.toByte()).put('='.toByte()).putFloat(minTemp.value).putFloat(maxTemp.value).putFloat(finalTemp.value).putInt(temperingState)
-        val version = dirtyVersion
+        buffer.putFloat(minTemp.value)
+        buffer.putFloat(maxTemp.value)
+        buffer.putFloat(finalTemp.value)
+        buffer.putInt(temperingState)
+        buffer.putInt(when(heat.value) {
+            Heat.Off -> 0
+            Heat.On -> 1
+            Heat.Auto -> 2
+        })
+        buffer.putInt(2) // Auto
+        buffer.putInt(2) // Auto
+        bluetooth.send("PACKET:" + (buffer.capacity()+2) + ":S=", false)
+        bluetooth.send(buffer.array(), false)
+        synced.value = SyncState.NotSyncing
         hasPerformedGetSync.value = true
-        Thread {
-            var socket : Socket? = null
-            try {
-                Log.v(TAG, "Connecting...")
-                socket = Socket("home.arongranberg.com", 6001)
-                socket.soTimeout = 6000
-                socket.getOutputStream().write(buffer.array())
-                Log.v(TAG, "Reading...")
-                // val output = BufferedReader(InputStreamReader(socket.getInputStream())).lines().collect(Collectors.joining('\n'))
-                val output = IOUtils.toString(socket.getInputStream())
-                Log.v(TAG, "Response: " + output)
-                Log.v(TAG, "Done")
-                lastSyncedVersion = version
-                lastSyncFailed.value = false
-            } catch (e : Exception) {
-                lastSyncFailed.value = true
-                Log.e(TAG, "Failed to sync", e)
-            } finally {
-                socket?.close()
-                synced.value = SyncState.NotSyncing
-            }
-        }.start()
+
+//
+//        val version = dirtyVersion
+//        hasPerformedGetSync.value = true
+//        Thread {
+//            var socket : Socket? = null
+//            try {
+//                Log.v(TAG, "Connecting...")
+//                socket = Socket("home.arongranberg.com", 6001)
+//                socket.soTimeout = 6000
+//                socket.getOutputStream().write(buffer.array())
+//                Log.v(TAG, "Reading...")
+//                // val output = BufferedReader(InputStreamReader(socket.getInputStream())).lines().collect(Collectors.joining('\n'))
+//                val output = IOUtils.toString(socket.getInputStream())
+//                Log.v(TAG, "Response: " + output)
+//                Log.v(TAG, "Done")
+//                lastSyncedVersion = version
+//                lastSyncFailed.value = false
+//            } catch (e : Exception) {
+//                lastSyncFailed.value = true
+//                Log.e(TAG, "Failed to sync", e)
+//            } finally {
+//                socket?.close()
+//                synced.value = SyncState.NotSyncing
+//            }
+//        }.start()
     }
 }
