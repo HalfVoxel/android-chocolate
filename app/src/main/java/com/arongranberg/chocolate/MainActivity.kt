@@ -319,14 +319,8 @@ class MainActivity : Activity() {
                 val startColor = if (previous) enabledColor else disabledColor
                 val endColor = if (current) enabledColor else disabledColor
 
-                /*val fadeIn = if(current) alarmTimeLabel else picker!!
-                val fadeOut = if(current) picker!! else alarmTimeLabel
-
-                val anim1 = ObjectAnimator.ofFloat(fadeOut, "alpha", fadeOut.alpha, 0f).setDuration(300)
-                val anim2 = ObjectAnimator.ofFloat(fadeIn, "alpha", fadeIn.alpha, 1f).setDuration(300)*/
                 val anim3 = ObjectAnimator.ofArgb(startButton!!.background, "tint", startColor, endColor).setDuration(400)
 
-                //currentAnimationSet.playSequentially(anim1, anim2)
                 currentAnimationSet.play(anim3)
                 currentAnimationSet.start()
             }
@@ -347,6 +341,9 @@ class MainActivity : Activity() {
             }
         }, syncTemperature)
         Log.v(TAG, "CREATE")
+
+        findViewById<RadioButton>(id.heat_auto).isChecked = true
+        findViewById<RadioButton>(id.mode_auto).isChecked = true
 
         (findViewById<Button>(id.heat_off)).setOnClickListener { heat.value = Heat.Off }
         (findViewById<Button>(id.heat_on)).setOnClickListener { heat.value = Heat.On }
@@ -506,7 +503,7 @@ class MainActivity : Activity() {
                 }
                 val startTime = if (temperature.isNotEmpty()) temperature.last().x else 0f
                 for (i in 0 until temperatureValuesToRead) {
-                    val compressedTemperature = integers[i+2].toByte()
+                    val compressedTemperature = integers[i+2].toInt()
                     val temp = decompressTemperature(compressedTemperature)
                     temperature.add(Entry(startTime + i.toFloat() * 5, temp))
                 }
@@ -758,9 +755,9 @@ class MainActivity : Activity() {
         }.start()*/
     }
 
-    fun decompressTemperature(t: Byte): Float {
-        val maxT = 80f;
-        val minT = 20f;
+    fun decompressTemperature(t: Int): Float {
+        val maxT = 80f
+        val minT = 20f
         return t * ((maxT - minT) / 255.0f) + minT
     }
 
@@ -768,54 +765,6 @@ class MainActivity : Activity() {
     internal fun syncTemperature() {
         syncTemperature.value = SyncState.Syncing
         sendCommand("GET TEMPERATURES")
-
-        /*syncTemperature.value = SyncState.Syncing
-        Thread {
-            var socket : Socket? = null
-            try {
-                Log.v(TAG, "Checking temperatures...")
-                socket = Socket("home.arongranberg.com", 6001)
-                socket.soTimeout = 6000
-                val command = "GET TEMPERATURES"
-                socket.getOutputStream().write(command.toByteArray())
-                val result = ByteBuffer.wrap(IOUtils.toByteArray(socket.getInputStream()))
-                result.order(ByteOrder.LITTLE_ENDIAN)
-                if (result.capacity() < 4) {
-                    throw Exception("Not enough data received when syncing temperature")
-                }
-
-                // Deserialize on main thread
-                handler.post({
-                    val startIndex = result.getInt(0)
-                    val temperatureValuesToRead = result.capacity()-4
-
-                    if (lastReceivedTemperatureIndex > startIndex + temperatureValuesToRead - 1) {
-                        // Machine rebooted?
-                        // Keep all values
-                    } else {
-                        val removeAllAfterIndex = temperature.size - 1 - (lastReceivedTemperatureIndex - startIndex)
-                        // Wow, so inefficient, but Kotlin is weird
-                        temperature.removeAll(temperature.filterIndexed { i, entry -> i >= removeAllAfterIndex })
-                    }
-                    val startTime = if(temperature.isNotEmpty()) temperature.last().x else 0f
-                    for (i in 0 until temperatureValuesToRead) {
-                        val compressedTemperature = result.get(i+4)
-                        val temp = decompressTemperature(compressedTemperature)
-                        Log.v(TAG, "Temp: " + temp)
-                        temperature.add(Entry(startTime + i.toFloat() * 5, temp))
-                    }
-                    Log.v(TAG, "Received ${temperature.size} entries with index " + startIndex)
-                    lastReceivedTemperatureIndex = startIndex + temperatureValuesToRead - 1
-                })
-                lastSyncFailed.value = false
-            } catch (e : Exception) {
-                lastSyncFailed.value = true
-                Log.e(TAG, "Failed to check temperatures", e)
-            } finally {
-                syncTemperature.value = SyncState.NotSyncing
-                socket?.close()
-            }
-        }.start()*/
     }
 
     fun calculateTemperingState (): Int {
@@ -853,31 +802,5 @@ class MainActivity : Activity() {
         bluetooth.send(buffer.array(), false)
         synced.value = SyncState.NotSyncing
         hasPerformedGetSync.value = true
-
-//
-//        val version = dirtyVersion
-//        hasPerformedGetSync.value = true
-//        Thread {
-//            var socket : Socket? = null
-//            try {
-//                Log.v(TAG, "Connecting...")
-//                socket = Socket("home.arongranberg.com", 6001)
-//                socket.soTimeout = 6000
-//                socket.getOutputStream().write(buffer.array())
-//                Log.v(TAG, "Reading...")
-//                // val output = BufferedReader(InputStreamReader(socket.getInputStream())).lines().collect(Collectors.joining('\n'))
-//                val output = IOUtils.toString(socket.getInputStream())
-//                Log.v(TAG, "Response: " + output)
-//                Log.v(TAG, "Done")
-//                lastSyncedVersion = version
-//                lastSyncFailed.value = false
-//            } catch (e : Exception) {
-//                lastSyncFailed.value = true
-//                Log.e(TAG, "Failed to sync", e)
-//            } finally {
-//                socket?.close()
-//                synced.value = SyncState.NotSyncing
-//            }
-//        }.start()
     }
 }

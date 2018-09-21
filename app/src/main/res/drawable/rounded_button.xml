@@ -13,15 +13,29 @@
                     android:right="@dimen/abc_button_padding_horizontal_material"
                     android:bottom="@dimen/abc_button_padding_vertical_material" />
             </shape>
+
             <ripple android:color="?android:attr/colorControlHighlight">
                 <item>
                     <!-- As we can't use themed ColorStateLists in L, we'll use a Drawable selector which
                          changes the shape's fill color. -->
                     <selector>
+                        <item android:state_checked="true">
+                            <shape android:shape="rectangle">
+                                <corners android:radius="@dimen/abc_control_corner_material"/>
+                                <solid android:color="@android:color/black"/>
+                                <stroke
+                                    android:width="3dp"
+                                    android:color="@android:color/white" />
+                                <padding android:left="@dimen/abc_button_padding_horizontal_material"
+                                    android:top="@dimen/abc_button_padding_vertical_material"
+                                    android:right="@dimen/abc_button_padding_horizontal_material"
+                                    android:bottom="@dimen/abc_button_padding_vertical_material"/>
+                            </shape>
+                        </item>
                         <item>
                             <shape android:shape="rectangle">
                                 <corners android:radius="@dimen/abc_control_corner_material"/>
-                                <solid android:color="?android:attr/colorButtonNormal"/>
+                                <solid android:color="@android:color/black"/>
                                 <padding android:left="@dimen/abc_button_padding_horizontal_material"
                                     android:top="@dimen/abc_button_padding_vertical_material"
                                     android:right="@dimen/abc_button_padding_horizontal_material"
